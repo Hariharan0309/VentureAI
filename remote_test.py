@@ -12,10 +12,11 @@ load_dotenv()
 PROJECT_ID = os.getenv("PROJECT_ID")
 
 initial_state = {
-    "user_id": "venture_capitalist_123"
+    "user_id": "venture_capitalist_123",
+    "pitch_deck_url": "https://firebasestorage.googleapis.com/v0/b/valued-mediator-461216-k7.firebasestorage.app/o/BuildBlitz_Google_%20Agentic_AI_Day_Idea.pdf?alt=media&token=9fb96f1a-4ec3-4904-bc92-2f20175b6730"
 }
 USER_ID = "venture_capitalist_123"
-PROMPT = "Analyze the current market trends for AI-powered startups."
+PROMPT = "The permission is granted now analyse"
 
 remote_app = vertexai.agent_engines.get(
     f"projects/{PROJECT_ID}/locations/us-central1/reasoningEngines/2175876336764059648"

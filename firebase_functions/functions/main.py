@@ -1,6 +1,9 @@
 from firebase_functions import https_fn, firestore_fn
 from firebase_functions.options import set_global_options, MemoryOption
 from firebase_admin import initialize_app, firestore, storage, messaging
+from google.cloud import documentai_v1
+from google.api_core.client_options import ClientOptions
+from google.api_core import exceptions
 
 import os
 import vertexai
@@ -14,8 +17,11 @@ from datetime import datetime
 # Best practice: Load configuration from environment variables with defaults.
 PROJECT_ID = os.environ.get("PROJECT_ID", "valued-mediator-461216-k7")
 LOCATION = os.environ.get("LOCATION", "us-central1")
+DOCUMENT_AI_LOCATION = os.environ.get("DOCUMENT_AI_LOCATION", "us") # New variable for Document AI
 REASONING_ENGINE_ID = os.environ.get("REASONING_ENGINE_ID", "2175876336764059648")
 DATABASE = os.environ.get("DATABASE", "ventureai")
+PROCESSOR_ID = os.environ.get("PROCESSOR_ID", "6143611b8bf159c1")
+MIME_TYPE = "application/pdf"
 # --------------------
 
 # Initialize Firebase Admin SDK once in the global scope.
@@ -96,6 +102,57 @@ def create_session_VAI(req: https_fn.Request) -> https_fn.Response:
         
         return https_fn.Response(response_data, mimetype="application/json")
 
+    except Exception as e:
+        print(f"An internal error occurred: {e}")
+        return https_fn.Response(f"An internal error occurred: {e}", status=500)
+
+@https_fn.on_request()
+def process_pdf_document(req: https_fn.Request) -> https_fn.Response:
+    """
+    An HTTP endpoint that processes a PDF from a URL using Document AI.
+    Expects a JSON body with 'pdf_url'.
+    """
+    try:
+        request_json = req.get_json(silent=True)
+        if not request_json or 'pdf_url' not in request_json:
+            return https_fn.Response("Error: Please provide 'pdf_url' in the JSON body.", status=400)
+
+        pdf_url = request_json['pdf_url']
+
+        if not PROJECT_ID or not PROCESSOR_ID:
+            return https_fn.Response("Error: Server configuration missing project or processor ID.", status=500)
+
+        # Download the PDF content from the URL
+        response = requests.get(pdf_url)
+        response.raise_for_status()
+        image_content = response.content
+
+        # Process the document with Document AI
+        api_endpoint = f"{DOCUMENT_AI_LOCATION}-documentai.googleapis.com"
+        print(f"Using Document AI API endpoint: {api_endpoint}")
+
+        opts = ClientOptions(api_endpoint=api_endpoint)
+        client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
+        full_processor_name = client.processor_path(PROJECT_ID, DOCUMENT_AI_LOCATION, PROCESSOR_ID)
+        print(f"Using Document AI processor: {full_processor_name}")
+
+        raw_document = documentai_v1.RawDocument(
+            content=image_content,
+            mime_type=MIME_TYPE,
+        )
+
+        request_doc_ai = documentai_v1.ProcessRequest(name=full_processor_name, raw_document=raw_document)
+        result = client.process_document(request=request_doc_ai)
+        document = result.document
+
+        return https_fn.Response(document.text, mimetype="text/plain")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error downloading PDF from {pdf_url}: {e}")
+        return https_fn.Response(f"Error: Could not download the PDF file. Details: {e}", status=400)
+    except exceptions.GoogleAPICallError as e:
+        print(f"Error calling Document AI API: {e}")
+        return https_fn.Response(f"Error: Could not process the document. Details: {e}", status=500)
     except Exception as e:
         print(f"An internal error occurred: {e}")
         return https_fn.Response(f"An internal error occurred: {e}", status=500)
