@@ -156,3 +156,64 @@ def process_pdf_document(req: https_fn.Request) -> https_fn.Response:
     except Exception as e:
         print(f"An internal error occurred: {e}")
         return https_fn.Response(f"An internal error occurred: {e}", status=500)
+
+@https_fn.on_request()
+def process_pdf_with_gemini(req: https_fn.Request) -> https_fn.Response:
+    """
+    An HTTP endpoint that sends a PDF to the Gemini agent for analysis.
+    Expects a JSON body with 'user_id', 'session_id', 'pdf_url', and an optional 'prompt'.
+    """
+    try:
+        request_json = req.get_json(silent=True)
+        # Check for required fields
+        required_fields = ['user_id', 'session_id', 'pdf_url']
+        if not request_json or not all(field in request_json for field in required_fields):
+            return https_fn.Response(f"Error: Please provide {', '.join(required_fields)}.", status=400)
+
+        user_id = request_json['user_id']
+        session_id = request_json['session_id']
+        pdf_url = request_json['pdf_url']
+        prompt = request_json.get('prompt', "Summarize the key information from this document.") # Default prompt
+
+        print(f"Received PDF URL: {pdf_url}")
+        response = requests.get(pdf_url)
+        response.raise_for_status()
+        pdf_data = response.content
+
+        # --- Prepare the message for the agent ---
+        message_parts = [
+            Part.from_data(data=pdf_data, mime_type="application/pdf"),
+            Part.from_text(prompt)
+        ]
+        
+        print("Successfully processed PDF URL and prompt into message Parts.")
+
+        final_message = Content(parts=message_parts, role="user").to_dict()
+
+        remote_app = get_remote_app()
+
+        # --- Query the Agent and Collect the Streamed Response ---
+        print(f"Streaming query for session '{session_id}' with PDF...")
+        full_response_text = ""
+        for event in remote_app.stream_query(
+            user_id=user_id,
+            session_id=session_id,
+            message=final_message,
+        ):
+            print(f"\n[EVENT]: {event}")
+            if event.get('content') and event.get('content').get('parts'):
+                for part in event['content']['parts']:
+                    if part.get('text'):
+                        full_response_text += part['text']
+        
+        print(f"Full agent response: {full_response_text}")
+        
+        response_data = json.dumps({"response": full_response_text})
+        return https_fn.Response(response_data, mimetype="application/json")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error downloading PDF from {pdf_url}: {e}")
+        return https_fn.Response(f"Error: Could not download the PDF file. Details: {e}", status=400)
+    except Exception as e:
+        print(f"An error occurred in process_pdf_with_gemini: {e}")
+        return https_fn.Response(f"An internal error occurred: {e}", status=500)
