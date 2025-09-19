@@ -7,7 +7,7 @@ import uuid
 PROJECT_ID = "valued-mediator-461216-k7"
 # This is the dataset and table the script will create and use.
 DATASET_ID = "venture_ai_test_dataset"
-TABLE_ID = "pitch_deck_analysis"
+TABLE_ID = "pitch_deck_analysis_v2"
 # --------------------
 
 def run_bigquery_test():
