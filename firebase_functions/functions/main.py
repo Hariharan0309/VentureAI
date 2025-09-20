@@ -77,49 +77,31 @@ def setup_bigquery_table():
         print(f"BigQuery Table '{BIGQUERY_TABLE_ID}' not found, creating it...")
         schema = [
             bigquery.SchemaField("analysis_id", "STRING"),
+            bigquery.SchemaField("user_id", "STRING"), # Added user_id
             bigquery.SchemaField("generated_pdf_url", "STRING"),
             bigquery.SchemaField("company_name", "STRING"),
             bigquery.SchemaField("date", "STRING"),
             bigquery.SchemaField("author", "STRING"),
-            bigquery.SchemaField("introduction", "STRING"),
-            bigquery.SchemaField("opportunity", "STRING"),
-            bigquery.SchemaField("key_strengths", "STRING"),
-            bigquery.SchemaField("the_ask_summary", "STRING"),
-            bigquery.SchemaField("recommendation", "STRING"),
-            bigquery.SchemaField("justification", "STRING"),
-            bigquery.SchemaField("product", "STRING"),
-            bigquery.SchemaField("mission", "STRING"),
-            bigquery.SchemaField("vision", "STRING"),
-            bigquery.SchemaField("problem", "STRING"),
+            bigquery.SchemaField("introduction", "STRING"), # from summary
+            bigquery.SchemaField("problem", "STRING"), # from problem_definition
+            bigquery.SchemaField("product_description", "STRING"), # from solution_description
+            bigquery.SchemaField("business_model", "STRING"), # Added business_model
+            bigquery.SchemaField("market_competition", "STRING"), # from competitive_advantage
+            bigquery.SchemaField("opportunity", "STRING"), # from market_opportunity.analysis
             bigquery.SchemaField("market_size_tam", "STRING"),
             bigquery.SchemaField("market_size_som", "STRING"),
-            bigquery.SchemaField("market_validation", "STRING"),
-            bigquery.SchemaField("product_description", "STRING"),
-            bigquery.SchemaField("key_features", "STRING"),
-            bigquery.SchemaField("impact_metrics", "STRING"),
+            bigquery.SchemaField("market_growth_rate", "STRING"),
+            bigquery.SchemaField("impact_metrics", "STRING"), # from traction.metrics
+            bigquery.SchemaField("customer_feedback", "STRING"),
             bigquery.SchemaField("founders", "STRING"),
-            bigquery.SchemaField("team_strengths", "STRING"),
-            bigquery.SchemaField("booked_customers", "STRING"),
-            bigquery.SchemaField("pilots_running", "STRING"),
-            bigquery.SchemaField("engagement_pipeline", "STRING"),
-            bigquery.SchemaField("recognitions", "STRING"),
-            bigquery.SchemaField("gtm_strategy", "STRING"),
-            bigquery.SchemaField("ideal_customer_profile", "STRING"),
-            bigquery.SchemaField("revenue_streams", "STRING"),
-            bigquery.SchemaField("average_contract_value", "STRING"),
-            bigquery.SchemaField("client_lifetime_value", "STRING"),
-            bigquery.SchemaField("average_sales_cycle", "STRING"),
-            bigquery.SchemaField("case_study_example", "STRING"),
-            bigquery.SchemaField("fy_25_26_revenue", "STRING"),
-            bigquery.SchemaField("growth_trajectory", "STRING"),
-            bigquery.SchemaField("round_size", "STRING"),
-            bigquery.SchemaField("round_type", "STRING"),
+            bigquery.SchemaField("team_strengths", "STRING"), # from team_analysis.background_summary
+            bigquery.SchemaField("key_strengths", "STRING"), # from team_analysis.strengths
+            bigquery.SchemaField("round_size", "STRING"), # from financials.funding_ask_inr
             bigquery.SchemaField("use_of_funds", "STRING"),
-            bigquery.SchemaField("exit_strategy", "STRING"),
-            bigquery.SchemaField("market_competition", "STRING"),
-            bigquery.SchemaField("sales_cycle", "STRING"),
-            bigquery.SchemaField("technical_risk", "STRING"),
-            bigquery.SchemaField("model_scalability", "STRING"),
+            bigquery.SchemaField("growth_trajectory", "STRING"), # from financials.projections_summary
+            bigquery.SchemaField("recommendation", "STRING"),
+            bigquery.SchemaField("justification", "STRING"),
+            bigquery.SchemaField("technical_risk", "STRING"), # from investment_recommendation.risks
         ]
         table = bigquery.Table(table_ref_str, schema=schema)
         client.create_table(table)
@@ -221,16 +203,23 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
         final_message = Content(parts=message_parts, role="user").to_dict()
 
         print(f"Streaming query to manager_agent for session '{session_id}'...")
-        full_response_text = ""
+        response_chunks = []
         for event in remote_app.stream_query(user_id=user_id, session_id=session_id, message=final_message):
             if event.get('content') and event.get('content').get('parts'):
                 for part in event['content']['parts']:
                     if part.get('text'):
-                        full_response_text += part['text']
+                        # Store each response chunk separately
+                        response_chunks.append(part['text'])
+
+        if not response_chunks:
+            return https_fn.Response("Agent returned no response.", status=500)
+
+        # The final report is the last item in the list
+        full_response_text = response_chunks[-1]
         
-        print("--- Agent's Raw Response ---")
+        print("--- Agent's Final Response Chunk ---")
         print(full_response_text)
-        print("----------------------------")
+        print("------------------------------------")
 
         if full_response_text.strip().startswith("```json"):
             full_response_text = full_response_text[full_response_text.find('{'):full_response_text.rfind('}')+1]
@@ -238,7 +227,7 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
         try:
             analysis_data = json.loads(full_response_text)
         except json.JSONDecodeError as e:
-            error_message = f"The agent returned a response that was not valid JSON. Raw response: '{full_response_text}'"
+            error_message = f"Failed to decode the final JSON chunk from the agent. Error: {e}. Raw final chunk: '{full_response_text}'"
             return https_fn.Response(error_message, status=500)
 
         pdf_bytes = generate_pdf_from_json(analysis_data)
@@ -251,42 +240,54 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
         bigquery_client = bigquery.Client(project=PROJECT_ID)
         table_ref_str = f"{PROJECT_ID}.{BIGQUERY_DATASET_ID}.{BIGQUERY_TABLE_ID}"
 
-        memo_data = analysis_data.get("investment_memo", {})
+        # The agent sometimes returns the memo directly, and sometimes nested under 'investment_memo'.
+        # This handles both cases by defaulting to the entire 'analysis_data' object if the key is missing.
+        memo_data = analysis_data.get("investment_memo", analysis_data)
         if not memo_data:
-            raise Exception("Agent response did not contain the expected 'investment_memo' object.")
+            raise Exception("Agent response was empty or did not contain the expected investment memo data.")
 
+        # --- Map Agent Response to BigQuery Schema ---
         row_to_insert = {
             "analysis_id": analysis_id,
+            "user_id": user_id, # Add user_id to insertion
             "generated_pdf_url": generated_pdf_url,
             "company_name": memo_data.get("company_name"),
-            "date": memo_data.get("date"),
-            "author": memo_data.get("author"),
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "author": "VentureAI Agent",
+            "introduction": memo_data.get("summary"),
+            "problem": memo_data.get("problem_definition"),
+            "product_description": memo_data.get("solution_description"),
+            "business_model": memo_data.get("business_model"), # Add business_model
+            "market_competition": memo_data.get("competitive_advantage"),
         }
 
         # Flatten nested objects
-        sections_to_flatten = [
-            "executive_summary", "company_overview", "problem_and_market_opportunity",
-            "solution_and_product", "team", "traction_and_gtm", "business_model",
-            "financial_projections", "the_ask", "potential_risks"
-        ]
-        for section in sections_to_flatten:
-            row_to_insert.update(memo_data.get(section, {}))
+        if team_analysis := memo_data.get("team_analysis"):
+            row_to_insert["founders"] = team_analysis.get("founders")
+            row_to_insert["team_strengths"] = team_analysis.get("background_summary")
+            row_to_insert["key_strengths"] = team_analysis.get("strengths")
 
-        # Handle doubly-nested objects manually
-        if isinstance(row_to_insert.get('market_size'), dict):
-            market_size_data = row_to_insert.pop('market_size')
-            row_to_insert['market_size_tam'] = market_size_data.get('tam')
-            row_to_insert['market_size_som'] = market_size_data.get('som')
-        
-        if isinstance(row_to_insert.get('key_metrics'), dict):
-            key_metrics_data = row_to_insert.pop('key_metrics')
-            row_to_insert.update(key_metrics_data)
+        if market_opportunity := memo_data.get("market_opportunity"):
+            row_to_insert["market_size_tam"] = market_opportunity.get("market_size_tam")
+            row_to_insert["market_size_som"] = market_opportunity.get("market_size_sam")
+            row_to_insert["market_growth_rate"] = market_opportunity.get("market_growth_rate")
+            row_to_insert["opportunity"] = market_opportunity.get("analysis")
 
-        # Rename conflicting key 'the_ask' from summary
-        if 'the_ask' in row_to_insert:
-            row_to_insert['the_ask_summary'] = row_to_insert.pop('the_ask')
+        if traction := memo_data.get("traction"):
+            row_to_insert["impact_metrics"] = traction.get("metrics")
+            row_to_insert["customer_feedback"] = traction.get("customer_feedback")
 
-        # Convert any remaining list/dict fields to JSON strings
+        if financials := memo_data.get("financials"):
+            row_to_insert["round_size"] = str(financials.get("funding_ask_inr"))
+            row_to_insert["use_of_funds"] = financials.get("use_of_funds")
+            row_to_insert["growth_trajectory"] = financials.get("projections_summary")
+
+        if investment_recommendation := memo_data.get("investment_recommendation"):
+            row_to_insert["recommendation"] = investment_recommendation.get("recommendation")
+            row_to_insert["justification"] = investment_recommendation.get("justification")
+            row_to_insert["technical_risk"] = investment_recommendation.get("risks")
+
+        # Convert list/dict fields to JSON strings for BigQuery
         for key, value in row_to_insert.items():
             if isinstance(value, (list, dict)):
                 row_to_insert[key] = json.dumps(value)

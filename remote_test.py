@@ -7,16 +7,27 @@ from google.auth import impersonated_credentials
 from google.oauth2 import service_account
 import google.auth
 
+import requests
+from vertexai.generative_models import Part, Content
+
 load_dotenv()
 
 PROJECT_ID = os.getenv("PROJECT_ID")
 
 initial_state = {
     "user_id": "venture_capitalist_123",
-    "pitch_deck_url": "https://firebasestorage.googleapis.com/v0/b/valued-mediator-461216-k7.firebasestorage.app/o/BuildBlitz_Google_%20Agentic_AI_Day_Idea.pdf?alt=media&token=9fb96f1a-4ec3-4904-bc92-2f20175b6730"
 }
+pitch_deck_url =  "https://firebasestorage.googleapis.com/v0/b/valued-mediator-461216-k7.firebasestorage.app/o/BuildBlitz_Google_%20Agentic_AI_Day_Idea.pdf?alt=media&token=9fb96f1a-4ec3-4904-bc92-2f20175b6730"
 USER_ID = "venture_capitalist_123"
 PROMPT = "The permission is granted now analyse"
+
+response = requests.get(pitch_deck_url)
+response.raise_for_status()
+pdf_data = response.content
+        
+message_parts = [Part.from_data(data=pdf_data, mime_type="application/pdf"), Part.from_text(PROMPT)]
+final_message = Content(parts=message_parts, role="user").to_dict()
+
 
 remote_app = vertexai.agent_engines.get(
     f"projects/{PROJECT_ID}/locations/us-central1/reasoningEngines/2175876336764059648"
@@ -43,6 +54,6 @@ else:
 for event in remote_app.stream_query(
     user_id=USER_ID,
     session_id=remote_session["id"],
-    message=PROMPT,
+    message=final_message,
 ):
     print(event)
