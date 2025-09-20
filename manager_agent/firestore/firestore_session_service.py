@@ -204,12 +204,8 @@ class FirestoreSessionService(BaseSessionService):
                 # Add the event creation to the batch.
                 batch.set(event_doc_ref, event_data_dict)
 
-                # Update the session document with the new state and timestamp.
-                # The `session` object was already updated in memory by `super().append_event`.
-                batch.update(session_ref, {
-                    "updateTime": firestore.SERVER_TIMESTAMP,
-                    "state": session.state
-                })
+                # Update the session document's timestamp. State is no longer saved here.
+                batch.update(session_ref, {"updateTime": firestore.SERVER_TIMESTAMP})
                 # Commit the batch.
                 logger.info("Committing batch to Firestore for session '%s'...", session.id)
                 batch.commit()
@@ -269,9 +265,18 @@ def _convert_event_to_json(event: Event) -> Dict[str, Any]:
     }
     event_json['actions'] = actions_json
   if event.content:
-    event_json['content'] = event.content.model_dump(
-        exclude_none=True, mode='json'
-    )
+    content_dict = event.content.model_dump(exclude_none=True, mode='json')
+    if event.author == "user" and 'parts' in content_dict:
+        new_parts = []
+        for part in content_dict['parts']:
+            # Check for inline_data which is how `Part.from_data` stores the PDF
+            if 'inline_data' in part and part['inline_data'].get('mime_type') == 'application/pdf':
+                # Replace the large PDF data with a placeholder text
+                new_parts.append({'text': '[PDF content omitted from history]'})
+            else:
+                new_parts.append(part)
+        content_dict['parts'] = new_parts
+    event_json['content'] = content_dict
   if event.error_code:
     event_json['error_code'] = event.error_code
   if event.error_message:

@@ -33,7 +33,7 @@ SESSIONS_COLLECTION = "adk_sessions"
 
 # --- Initialization ---
 initialize_app()
-set_global_options(max_instances=10, memory=MemoryOption.GB_1, timeout_sec=540)
+set_global_options(max_instances=10, memory=MemoryOption.GB_1, timeout_sec=660)
 
 _remote_app = None
 _db = None
@@ -174,7 +174,7 @@ def create_session(req: https_fn.Request) -> https_fn.Response:
         print(f"An error occurred in create_session: {e}")
         return https_fn.Response(f"An internal error occurred: {e}", status=500)
 
-@https_fn.on_request()
+@https_fn.on_request(timeout_sec=540)
 def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
     global _bigquery_table_checked
     try:
