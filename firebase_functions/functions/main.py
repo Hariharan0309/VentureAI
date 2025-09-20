@@ -311,3 +311,34 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
     except Exception as e:
         print(f"An error occurred: {e}")
         return https_fn.Response(f"An internal error occurred: {e}", status=500)
+
+@https_fn.on_request()
+def get_investor_dashboard_data(req: https_fn.Request) -> https_fn.Response:
+    """
+    Fetches all rows from the BigQuery pitch deck analysis table for the investor dashboard.
+    """
+    try:
+        print("Received request for investor dashboard data.")
+        
+        bigquery_client = bigquery.Client(project=PROJECT_ID)
+        
+        table_ref_str = f"{PROJECT_ID}.{BIGQUERY_DATASET_ID}.{BIGQUERY_TABLE_ID}"
+        
+        query = f"SELECT * FROM `{table_ref_str}`"
+        
+        print(f"Executing query: {query}")
+        query_job = bigquery_client.query(query)
+        
+        # Fetch all rows from the query job
+        rows = [dict(row) for row in query_job]
+        
+        print(f"Successfully fetched {len(rows)} rows from BigQuery.")
+        
+        # Convert the list of dictionaries to a JSON string
+        response_data = json.dumps(rows, default=str) # Use default=str to handle dates/times
+        
+        return https_fn.Response(response_data, mimetype="application/json")
+
+    except Exception as e:
+        print(f"An error occurred in get_investor_dashboard_data: {e}")
+        return https_fn.Response(f"An internal error occurred: {e}", status=500)
