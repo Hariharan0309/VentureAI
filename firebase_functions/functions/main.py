@@ -136,11 +136,27 @@ def generate_pdf_from_json(json_data):
 
 @https_fn.on_request()
 def create_session(req: https_fn.Request) -> https_fn.Response:
-    """Finds or creates a user session."""
+    """
+    HTTP Cloud Function to generate investment analysis, now with CORS support.
+    """
+    # Set CORS headers for the preflight OPTIONS request.
+    if req.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Max-Age": "3600",
+        }
+        return https_fn.Response("", headers=headers, status=204)
+
+    # Set CORS headers for the main request.
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+    }
     try:
         request_json = req.get_json(silent=True)
         if not request_json or 'user_id' not in request_json:
-            return https_fn.Response("Error: Please provide 'user_id' in the JSON body.", status=400)
+            return https_fn.Response("Error: Please provide 'user_id' in the JSON body.", status=400, headers=headers)
         
         user_id = request_json['user_id']
         initial_state = request_json.get('state', {})
@@ -168,14 +184,31 @@ def create_session(req: https_fn.Request) -> https_fn.Response:
              raise Exception("Failed to get or create a session ID.")
 
         response_data = json.dumps({"session_id": session_id, "state": session_state})
-        return https_fn.Response(response_data, mimetype="application/json")
+        return https_fn.Response(response_data, mimetype="application/json", headers=headers)
 
     except Exception as e:
         print(f"An error occurred in create_session: {e}")
-        return https_fn.Response(f"An internal error occurred: {e}", status=500)
+        return https_fn.Response(f"An internal error occurred: {e}", status=500, headers=headers)
 
 @https_fn.on_request(timeout_sec=540)
 def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
+    """
+    HTTP Cloud Function to generate investment analysis, now with CORS support.
+    """
+    # Set CORS headers for the preflight OPTIONS request.
+    if req.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Max-Age": "3600",
+        }
+        return https_fn.Response("", headers=headers, status=204)
+
+    # Set CORS headers for the main request.
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+    }
     global _bigquery_table_checked
     try:
         if not _bigquery_table_checked:
@@ -185,7 +218,7 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
         request_json = req.get_json(silent=True)
         required_fields = ['user_id', 'session_id', 'pdf_url']
         if not request_json or not all(field in request_json for field in required_fields):
-                return https_fn.Response(f"Error: Please provide {', '.join(required_fields)}.", status=400)
+                return https_fn.Response(f"Error: Please provide {', '.join(required_fields)}.", status=400, headers=headers)
 
         user_id = request_json['user_id']
         session_id = request_json['session_id']
@@ -212,7 +245,7 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
                         response_chunks.append(part['text'])
 
         if not response_chunks:
-            return https_fn.Response("Agent returned no response.", status=500)
+            return https_fn.Response("Agent returned no response.", status=500, headers=headers)
 
         # The final report is the last item in the list
         full_response_text = response_chunks[-1]
@@ -228,7 +261,7 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
             analysis_data = json.loads(full_response_text)
         except json.JSONDecodeError as e:
             error_message = f"Failed to decode the final JSON chunk from the agent. Error: {e}. Raw final chunk: '{full_response_text}'"
-            return https_fn.Response(error_message, status=500)
+            return https_fn.Response(error_message, status=500, headers=headers)
 
         pdf_bytes = generate_pdf_from_json(analysis_data)
         bucket = storage.bucket()
@@ -306,14 +339,31 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
         })
 
         response_data = json.dumps({"message": "Analysis complete", "analysis_id": analysis_id, "generated_pdf_url": generated_pdf_url})
-        return https_fn.Response(response_data, mimetype="application/json")
+        return https_fn.Response(response_data, mimetype="application/json", headers=headers)
 
     except Exception as e:
         print(f"An error occurred: {e}")
-        return https_fn.Response(f"An internal error occurred: {e}", status=500)
+        return https_fn.Response(f"An internal error occurred: {e}", status=500, headers=headers)
 
 @https_fn.on_request()
 def get_investor_dashboard_data(req: https_fn.Request) -> https_fn.Response:
+    """
+    HTTP Cloud Function to generate investment analysis, now with CORS support.
+    """
+    # Set CORS headers for the preflight OPTIONS request.
+    if req.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Max-Age": "3600",
+        }
+        return https_fn.Response("", headers=headers, status=204)
+
+    # Set CORS headers for the main request.
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+    }
     """
     Fetches all rows from the BigQuery pitch deck analysis table for the investor dashboard.
     """
@@ -337,8 +387,8 @@ def get_investor_dashboard_data(req: https_fn.Request) -> https_fn.Response:
         # Convert the list of dictionaries to a JSON string
         response_data = json.dumps(rows, default=str) # Use default=str to handle dates/times
         
-        return https_fn.Response(response_data, mimetype="application/json")
+        return https_fn.Response(response_data, mimetype="application/json", headers=headers)
 
     except Exception as e:
         print(f"An error occurred in get_investor_dashboard_data: {e}")
-        return https_fn.Response(f"An internal error occurred: {e}", status=500)
+        return https_fn.Response(f"An internal error occurred: {e}", status=500, headers=headers)

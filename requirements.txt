@@ -6,3 +6,4 @@ python-dotenv
 google-cloud-documentai
 scrapy
 pydantic
+google-cloud-bigquery

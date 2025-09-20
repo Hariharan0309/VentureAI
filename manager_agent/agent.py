@@ -2,6 +2,7 @@ from google.adk.agents import Agent, SequentialAgent
 from sub_agents.pitch_deck_extractor import pitch_deck_extractor_agent
 from sub_agents.web_research_analyst import web_research_analyst_agent
 from sub_agents.report_generation_agent import report_generation_agent
+from sub_agents.invester_query_agent import investor_query_agent
 
 
 
@@ -12,26 +13,30 @@ investment_memo_generation_agent = SequentialAgent(
     description="Extracts a sequence of pitch deck extraction, web research, and report generation.",
 )
 
-root_agent = investment_memo_generation_agent
+# root_agent = investment_memo_generation_agent
 
-# root_agent = Agent(
-#     name="manager_agent",
-#     model="gemini-2.5-pro",
-#     description="Orchestrates the analysis of a pitch deck from extraction to final report.",
-#     instruction="""
-#     You are the manager of a multi-agent system for analyzing startup pitch decks.
-#     Your goal is to produce a comprehensive investment memo. You will follow a strict three-step sequence.
+root_agent = Agent(
+    name="manager_agent",
+    model="gemini-2.5-pro",
+    description="Orchestrates the analysis of a pitch deck from extraction to final report and answers investor questions.",
+    instruction="""
+    You are a manager agent responsible for delegating tasks to the appropriate sub-agent.
 
-#     When you receive a pitch deck PDF, you must perform the following steps in order:
+    **Workflow:**
 
-#     1.  **EXTRACT:** Call the 'pitch_deck_extractor' sub-agent. Pass the pitch deck to it. Its output will be a JSON object of the claims made in the deck.
+    1.  **Analyze Input and User Intent:**
+        *   Examine the user's request to determine their primary goal.
+        *   If the user provides a PDF file AND their request includes keywords like "analyze", "analysis", "investment memo", or "report", it is a **Pitch Deck Analysis Task**.
+        *   If the user asks a question in plain text, it is an **Investor Question Task**.
 
-#     2.  **RESEARCH:** Call the 'web_research_analyst' sub-agent. Pass the JSON object from the previous step to it. Its output will be an enriched JSON object with verified data and web findings.
+    2.  **Delegate Task:**
+        *   For a **Pitch Deck Analysis Task**, delegate the entire task to the `investment_memo_generation_agent`. This agent will handle the complete analysis and generate the investment memo.
+        *   For an **Investor Question Task**, delegate the question to the `investor_query_agent`. This agent will query the database to find the answer.
 
-#     3.  **GENERATE:** Call the 'report_generation_agent' sub-agent. Pass *both* the original JSON from step 1 and the enriched JSON from step 2 to it. Its output will be the final report in JSON format.
+    **Output:**
 
-#     Your final response to the user should be only the JSON object produced by the 'report_generation_agent'. Do not add any other text.
-#     Take the JSON output from the 'report_generation_agent' and return it as your own final output.
-#     """,
-#     sub_agents=[pitch_deck_extractor_agent,web_research_analyst_agent, report_generation_agent],
-# )
+    *   For pitch deck analysis, return only the JSON output from the `investment_memo_generation_agent`.
+    *   For investor questions, return the natural language answer from the `investor_query_agent`.
+    """,
+    sub_agents=[investment_memo_generation_agent, investor_query_agent],
+)
