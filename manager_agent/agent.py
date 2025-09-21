@@ -2,7 +2,6 @@ from google.adk.agents import Agent, SequentialAgent
 from sub_agents.pitch_deck_extractor import pitch_deck_extractor_agent
 from sub_agents.web_research_analyst import web_research_analyst_agent
 from sub_agents.report_generation_agent import report_generation_agent
-from sub_agents.followup_questions_agent import followup_questions_agent
 from sub_agents.invester_query_agent import investor_query_agent
 
 
@@ -10,8 +9,8 @@ from sub_agents.invester_query_agent import investor_query_agent
 
 investment_memo_generation_agent = SequentialAgent(
     name="inestmemo_generation_agent",
-    sub_agents=[pitch_deck_extractor_agent, web_research_analyst_agent, report_generation_agent, followup_questions_agent],
-    description="Extracts a sequence of pitch deck extraction, web research, report generation, and follow-up questions for founders.",
+    sub_agents=[pitch_deck_extractor_agent, web_research_analyst_agent, report_generation_agent],
+    description="Extracts a sequence of pitch deck extraction, web research, and report generation.",
 )
 
 # root_agent = investment_memo_generation_agent
