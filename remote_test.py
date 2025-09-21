@@ -21,7 +21,7 @@ initial_state = {
 pitch_deck_url =  "https://firebasestorage.googleapis.com/v0/b/valued-mediator-461216-k7.firebasestorage.app/o/VentureAI_Data%2FSia%20-%20DSA-Pitch%20deck_V1-INR.pdf?alt=media&token=5426f306-d4f3-44be-9d88-15b5bfd25f7d"
 USER_ID = "venture_capitalist_123"
 PROMPT = "Analyse the uploaded pitch deck and provide a detailed investment memo covering team, problem, solution, market opportunity, traction, business model, competitive advantage, and funding ask."
-
+invester_query = "What is the market opportunity for this startup?"
 response = requests.get(pitch_deck_url)
 response.raise_for_status()
 pdf_data = response.content
@@ -55,6 +55,6 @@ else:
 for event in remote_app.stream_query(
     user_id=USER_ID,
     session_id=remote_session["id"],
-    message=final_message,
+    message=invester_query,
 ):
     print(event)
