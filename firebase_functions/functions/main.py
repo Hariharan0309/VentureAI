@@ -80,6 +80,8 @@ def setup_bigquery_table():
             bigquery.SchemaField("user_id", "STRING"), # Added user_id
             bigquery.SchemaField("generated_pdf_url", "STRING"),
             bigquery.SchemaField("company_name", "STRING"),
+            bigquery.SchemaField("tech_field", "STRING"),
+            bigquery.SchemaField("company_website", "STRING"),
             bigquery.SchemaField("date", "STRING"),
             bigquery.SchemaField("author", "STRING"),
             bigquery.SchemaField("introduction", "STRING"), # from summary
@@ -216,13 +218,16 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
             _bigquery_table_checked = True
 
         request_json = req.get_json(silent=True)
-        required_fields = ['user_id', 'session_id', 'pdf_url']
+        required_fields = ['user_id', 'session_id', 'pdf_url', 'tech_field', 'short_description']
         if not request_json or not all(field in request_json for field in required_fields):
                 return https_fn.Response(f"Error: Please provide {', '.join(required_fields)}.", status=400, headers=headers)
 
         user_id = request_json['user_id']
         session_id = request_json['session_id']
         pdf_url = request_json['pdf_url']
+        tech_field = request_json['tech_field']
+        company_website = request_json.get('company_website')
+        short_description = request_json['short_description']
         prompt = request_json.get('prompt', "Analyze this pitch deck and return a comprehensive investment memo based on your defined output schema.")
 
         analysis_id = str(uuid.uuid4())
@@ -285,6 +290,8 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
             "user_id": user_id, # Add user_id to insertion
             "generated_pdf_url": generated_pdf_url,
             "company_name": memo_data.get("company_name"),
+            "tech_field": tech_field,
+            "company_website": company_website,
             "date": datetime.now().strftime("%Y-%m-%d"),
             "author": "VentureAI Agent",
             "introduction": memo_data.get("summary"),
@@ -335,7 +342,11 @@ def generate_investment_analysis(req: https_fn.Request) -> https_fn.Response:
         session_doc_ref = db.collection(SESSIONS_COLLECTION).document(session_id)
         session_doc_ref.update({
             "state.analysis_id": analysis_id,
-            "state.generated_pdf_url": generated_pdf_url
+            "state.generated_pdf_url": generated_pdf_url,
+            "state.tech_field": tech_field,
+            "state.company_website": company_website,
+            "state.short_description": short_description,
+            "state.pitch_deck_url": pdf_url
         })
 
         response_data = json.dumps({"message": "Analysis complete", "analysis_id": analysis_id, "generated_pdf_url": generated_pdf_url})
