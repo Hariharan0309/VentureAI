@@ -471,3 +471,63 @@ def invester_query_agent_function(req: https_fn.Request) -> https_fn.Response:
     except Exception as e:
         print(f"An error occurred in invester_query_agent_function: {e}")
         return https_fn.Response(f"An internal error occurred: {e}", status=500, headers=headers)
+
+@https_fn.on_request(timeout_sec=540)
+def followup_question(req: https_fn.Request) -> https_fn.Response:
+    """
+    HTTP Cloud Function to generate follow-up questions for the founder.
+    """
+    # Set CORS headers for the preflight OPTIONS request.
+    if req.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Max-Age": "3600",
+        }
+        return https_fn.Response("", headers=headers, status=204)
+
+    # Set CORS headers for the main request.
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+    }
+
+    try:
+        request_json = req.get_json(silent=True)
+        required_fields = ['user_id', 'session_id']
+        if not request_json or not all(field in request_json for field in required_fields):
+            return https_fn.Response(f"Error: Please provide {', '.join(required_fields)}.", status=400, headers=headers)
+
+        user_id = request_json['user_id']
+        session_id = request_json['session_id']
+        
+        prompt = "provide me follow up questins for the founder based on the analysis. Also provide the questions as a json."
+
+        remote_app = get_remote_app()
+
+        final_message = Content(parts=[Part.from_text(prompt)], role="user").to_dict()
+
+        print(f"Streaming query to followup_question_agent for session '{session_id}'...")
+        
+        response_chunks = []
+        for event in remote_app.stream_query(user_id=user_id, session_id=session_id, message=final_message):
+            if event.get('content') and event.get('content').get('parts'):
+                for part in event['content']['parts']:
+                    if part.get('text'):
+                        response_chunks.append(part['text'])
+
+        if not response_chunks:
+            return https_fn.Response("Agent returned no response.", status=500, headers=headers)
+
+        full_response_text = "".join(response_chunks)
+
+        print("--- Followup Question Agent's Response ---")
+        print(full_response_text)
+        print("------------------------------------")
+
+        response_data = json.dumps({"message": "Follow-up questions generated", "agent_response": full_response_text})
+        return https_fn.Response(response_data, mimetype="application/json", headers=headers)
+
+    except Exception as e:
+        print(f"An error occurred in followup_question: {e}")
+        return https_fn.Response(f"An internal error occurred: {e}", status=500, headers=headers)

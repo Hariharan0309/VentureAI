@@ -15,13 +15,14 @@ load_dotenv()
 PROJECT_ID = os.getenv("PROJECT_ID")
 
 initial_state = {
-    "user_id": "venture_capitalist_123",
-    "id_to_analyse": "5ba4dead-d271-4c10-a337-78e41ec17885"
+    "user_id": "venture_capitalist_124",
+    "id_to_analyse": "5ba4dead-d271-4c10-a337-78e41ec17885",
+    "analysis_id": "5ba4dead-d271-4c10-a337-78e41ec17885"
 }
 pitch_deck_url =  "https://firebasestorage.googleapis.com/v0/b/valued-mediator-461216-k7.firebasestorage.app/o/VentureAI_Data%2FSia%20-%20DSA-Pitch%20deck_V1-INR.pdf?alt=media&token=5426f306-d4f3-44be-9d88-15b5bfd25f7d"
-USER_ID = "venture_capitalist_123"
+USER_ID = "venture_capitalist_124"
 PROMPT = "Analyse the uploaded pitch deck and provide a detailed investment memo covering team, problem, solution, market opportunity, traction, business model, competitive advantage, and funding ask."
-invester_query = "What is the market opportunity for this startup?"
+invester_query = "Give me the follow up questions for the founder based on the analysis."
 response = requests.get(pitch_deck_url)
 response.raise_for_status()
 pdf_data = response.content

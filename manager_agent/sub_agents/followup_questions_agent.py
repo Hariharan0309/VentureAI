@@ -1,6 +1,36 @@
 from google.adk.agents import Agent
 import pydantic
 from typing import List, Optional
+from google.adk.tools.tool_context import ToolContext
+from google.cloud import bigquery
+import os
+import json
+
+# --- Configuration ---
+PROJECT_ID = os.environ.get("GCP_PROJECT", "valued-mediator-461216-k7")
+BIGQUERY_DATASET_ID = os.environ.get("BIGQUERY_DATASET_ID", "venture_ai_test_dataset")
+BIGQUERY_TABLE_ID = os.environ.get("BIGQUERY_TABLE_ID", "pitch_deck_analysis")
+
+def get_analysis_data(tool_context: ToolContext) -> dict:
+    """Fetches the analysis data for a given analysis_id from BigQuery."""
+    analysis_id = tool_context.state.get('analysis_id')
+    if not analysis_id:
+        raise ValueError("analysis_id not found in the session state.")
+
+    client = bigquery.Client(project=PROJECT_ID)
+    table_ref_str = f"{PROJECT_ID}.{BIGQUERY_DATASET_ID}.{BIGQUERY_TABLE_ID}"
+    query = f"SELECT * FROM `{table_ref_str}` WHERE analysis_id = @analysis_id"
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("analysis_id", "STRING", analysis_id),
+        ]
+    )
+    query_job = client.query(query, job_config=job_config)
+    results = query_job.result()
+    try:
+        return dict(next(iter(results)))
+    except StopIteration:
+        return {"error": f"No analysis found for ID: {analysis_id}"}
 
 # --- Pydantic Schemas for Follow-up Questions ---
 
@@ -23,6 +53,8 @@ followup_questions_agent = Agent(
     model="gemini-2.5-pro",
     description="Generates challenging follow-up questions for founders based on pitch deck analysis and research findings.",
     instruction="""
+    **IMPORTANT**: Before generating any questions, you MUST call the `get_analysis_data` tool to retrieve the investment memo data. The `analysis_id` required by this tool is available in your session state under the key `id_to_analyse`. Use the retrieved analysis data as the primary source of information for generating your follow-up questions.
+
     You are a senior VC partner conducting due diligence. You have received three pieces of information:
     1. Original claims extracted from the pitch deck
     2. Web research findings that verify or contradict those claims
@@ -58,6 +90,6 @@ followup_questions_agent = Agent(
 
     Your questions should be the type that would make a founder think deeply and provide concrete evidence for their claims.
     """,
-    tools=[],
+    tools=[get_analysis_data],
     output_schema=FollowUpQuestions,
 )
