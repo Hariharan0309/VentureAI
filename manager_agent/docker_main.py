@@ -172,13 +172,30 @@ def read_root():
 
 @app.post("/create_session")
 async def create_session(request: CreateSessionRequest):
-    """Creates a new session and returns the session ID."""
-    session = await session_service.create_session(
-        app_name="venture-ai",
-        user_id=request.user_id,
-        state=request.initial_state
-    )
-    response_data = json.dumps({"session_id": session.id, "state": session.state})
+    """Creates a new session or reuses an existing one and returns the session ID and state."""
+    
+    print(f"Checking for existing sessions for user '{request.user_id}'...")
+    list_sessions_response = await session_service.list_sessions(app_name="venture-ai", user_id=request.user_id)
+    
+    session_id = None
+    session_state = {}
+
+    if list_sessions_response and list_sessions_response.sessions:
+        remote_session = list_sessions_response.sessions[0]
+        session_id = remote_session.id
+        session_state = remote_session.state
+        print(f"Found existing session with ID: {session_id}")
+    else:
+        print(f"No existing sessions for user '{request.user_id}'. Creating a new one.")
+        new_session = await session_service.create_session(user_id=request.user_id, state=request.initial_state)
+        session_id = new_session.id
+        session_state = new_session.state
+        print(f"Created new session with ID: {session_id}")
+    
+    if not session_id:
+         raise Exception("Failed to get or create a session ID.")
+
+    response_data = json.dumps({"session_id": session_id, "state": session_state})
     return JSONResponse(content=response_data)
 
 
