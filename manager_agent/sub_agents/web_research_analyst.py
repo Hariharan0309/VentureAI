@@ -3,7 +3,7 @@ from google.adk.tools import google_search
 
 web_research_analyst_agent = Agent(
     name="web_research_analyst",
-    model="gemini-2.5-pro",
+    model="gemini-2.5-flash",
     description="Researches and verifies information from a pitch deck using Google.",
     instruction="""
     You are a research analyst. You will be given a JSON object containing claims from a startup's pitch deck.

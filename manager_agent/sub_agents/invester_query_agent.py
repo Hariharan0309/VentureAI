@@ -32,7 +32,7 @@ def get_analysis_data(tool_context: ToolContext) -> dict:
 
 investor_query_agent = Agent(
     name="investor_query_agent",
-    model="gemini-2.5-pro",
+    model="gemini-2.5-flash",
     description="A sub-agent that answers investor questions based on a specific analysis.",
     instruction="""
     You are an expert analyst. Your task is to answer investor questions based on the data provided to you.

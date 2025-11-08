@@ -26,7 +26,9 @@ from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from typing_extensions import override
 
-from google.adk.sessions import _session_util, Session
+from google.genai.types import Content
+
+from google.adk.sessions import Session
 from google.adk.events.event import Event
 from google.adk.events.event_actions import EventActions
 from google.adk.sessions.base_session_service import (
@@ -180,6 +182,16 @@ class FirestoreSessionService(BaseSessionService):
         
         await asyncio.to_thread(_delete_in_firestore)
 
+    async def update_session_state(self, session_id: str, state_delta: Dict[str, Any]):
+        """Updates the state of a session document in Firestore."""
+        def _update_in_firestore():
+            session_ref = self._db.collection(SESSIONS_COLLECTION).document(session_id)
+            # Firestore's update with dot notation is perfect for this
+            update_data = {f"state.{key}": value for key, value in state_delta.items()}
+            update_data["updateTime"] = firestore.SERVER_TIMESTAMP
+            session_ref.update(update_data)
+
+        await asyncio.to_thread(_update_in_firestore)
 
     @override
     async def append_event(self, session: Session, event: Event) -> Event:
@@ -285,50 +297,49 @@ def _convert_event_to_json(event: Event) -> Dict[str, Any]:
 
 
 def _from_firestore_doc_to_event(doc: firestore.DocumentSnapshot) -> Event:
-  """Deserializes a Firestore document into an Event object."""
-  event_dict = doc.to_dict()
-  event_actions = EventActions()
-  if event_dict.get('actions', None):
-    actions_data = event_dict['actions']
-    event_actions = EventActions(
-        skip_summarization=actions_data.get('skipSummarization', None),
-        state_delta=actions_data.get('stateDelta', {}),
-        artifact_delta=actions_data.get('artifactDelta', {}),
-        transfer_to_agent=actions_data.get('transferAgent', None),
-        escalate=actions_data.get('escalate', None),
-        requested_auth_configs=actions_data.get(
-            'requestedAuthConfigs', {}
-        ),
+    """Deserializes a Firestore document into an Event object."""
+    event_dict = doc.to_dict()
+    event_actions = EventActions()
+    if event_dict.get("actions", None):
+        actions_data = event_dict["actions"]
+        event_actions = EventActions(
+            skip_summarization=actions_data.get("skipSummarization", None),
+            state_delta=actions_data.get("stateDelta", {}),
+            artifact_delta=actions_data.get("artifactDelta", {}),
+            transfer_to_agent=actions_data.get("transferAgent", None),
+            escalate=actions_data.get("escalate", None),
+            requested_auth_configs=actions_data.get("requestedAuthConfigs", {}),
+        )
+
+    ts_map = event_dict["timestamp"]
+    timestamp_float = ts_map["seconds"] + ts_map.get("nanos", 0) / 1_000_000_000
+
+    content_dict = event_dict.get("content", None)
+    content = Content(**content_dict) if content_dict else None
+
+    event = Event(
+        id=doc.id,
+        invocation_id=event_dict["invocation_id"],
+        author=event_dict["author"],
+        actions=event_actions,
+        content=content,
+        timestamp=timestamp_float,
+        error_code=event_dict.get("error_code", None),
+        error_message=event_dict.get("error_message", None),
     )
 
-  ts_map = event_dict['timestamp']
-  timestamp_float = ts_map['seconds'] + ts_map.get('nanos', 0) / 1_000_000_000
+    if event_dict.get("event_metadata", None):
+        metadata = event_dict["event_metadata"]
+        long_running_tool_ids_list = metadata.get("long_running_tool_ids", None)
+        event.partial = metadata.get("partial", None)
+        event.turn_complete = metadata.get("turn_complete", None)
+        event.interrupted = metadata.get("interrupted", None)
+        event.branch = metadata.get("branch", None)
+        # grounding_metadata_dict = metadata.get("grounding_metadata", None)
+        # if grounding_metadata_dict:
+        #     event.grounding_metadata = GroundingMetadata(**grounding_metadata_dict)
+        event.long_running_tool_ids = (
+            set(long_running_tool_ids_list) if long_running_tool_ids_list else None
+        )
 
-  event = Event(
-      id=doc.id,
-      invocation_id=event_dict['invocation_id'],
-      author=event_dict['author'],
-      actions=event_actions,
-      content=_session_util.decode_content(event_dict.get('content', None)),
-      timestamp=timestamp_float,
-      error_code=event_dict.get('error_code', None),
-      error_message=event_dict.get('error_message', None),
-  )
-
-  if event_dict.get('event_metadata', None):
-    metadata = event_dict['event_metadata']
-    long_running_tool_ids_list = metadata.get(
-        'long_running_tool_ids', None
-    )
-    event.partial = metadata.get('partial', None)
-    event.turn_complete = metadata.get('turn_complete', None)
-    event.interrupted = metadata.get('interrupted', None)
-    event.branch = metadata.get('branch', None)
-    event.grounding_metadata = _session_util.decode_grounding_metadata(
-        metadata.get('grounding_metadata', None)
-    )
-    event.long_running_tool_ids = (
-        set(long_running_tool_ids_list) if long_running_tool_ids_list else None
-    )
-
-  return event
+    return event

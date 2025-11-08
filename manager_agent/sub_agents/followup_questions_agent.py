@@ -50,7 +50,7 @@ class FollowUpQuestions(pydantic.BaseModel):
 
 followup_questions_agent = Agent(
     name="followup_questions_agent",
-    model="gemini-2.5-pro",
+    model="gemini-2.5-flash",
     description="Generates challenging follow-up questions for founders based on pitch deck analysis and research findings.",
     instruction="""
     **IMPORTANT**: Before generating any questions, you MUST call the `get_analysis_data` tool to retrieve the investment memo data. The `analysis_id` required by this tool is available in your session state under the key `id_to_analyse`. Use the retrieved analysis data as the primary source of information for generating your follow-up questions.
